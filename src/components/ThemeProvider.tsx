@@ -1,50 +1,45 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { ThemeContext } from "../context/ThemeContext";
+import { createContext, useContext, useEffect, useState } from "react";
 
-export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  const [dark, setDark] = useState<boolean>(() => {
-    try {
-      if (typeof window === "undefined") return false;
-      const saved = localStorage.getItem("theme");
-      if (saved) return saved === "dark";
-      return (
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches
-      );
-    } catch (err) {
-      // handle the exception (log) instead of swallowing it silently
-      // SonarQube will be satisfied because we don't ignore the exception.
-      // Logging is lightweight and useful for debugging in dev.
-      // In production you might route to a telemetry sink instead.
-      // eslint-disable-next-line no-console
-      console.warn("Failed to read persisted theme:", err);
-      return false;
-    }
-  });
+type Theme = "light" | "dark";
 
-  // stable toggle identity
-  const toggle = useCallback(() => setDark((d) => !d), []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("theme", dark ? "dark" : "light");
-    } catch (err) {
-      // log errors when persisting theme
-      // eslint-disable-next-line no-console
-      console.warn("Failed to persist theme:", err);
-    }
-
-    if (typeof document !== "undefined") {
-      document.documentElement.classList.toggle("dark", dark);
-    }
-  }, [dark]);
-
-  // memoize provider value so it doesn't change every render
-  const value = useMemo(() => ({ dark, toggle }), [dark, toggle]);
-
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+type ThemeContextType = {
+  theme: Theme;
+  toggleTheme: () => void;
 };
 
-export default ThemeProvider;
+const ThemeContext = createContext<ThemeContextType | null>(null);
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<Theme>("light");
+
+  // Load saved theme
+  useEffect(() => {
+    const saved = localStorage.getItem("theme") as Theme | null;
+    if (saved) setTheme(saved);
+  }, []);
+
+  // Apply theme to <html>
+  useEffect(() => {
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.classList.add(theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  };
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) {
+    throw new Error("useTheme must be used within ThemeProvider");
+  }
+  return ctx;
+}
